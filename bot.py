@@ -7,7 +7,7 @@ from pathlib import Path
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Telegram
+# telegram
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -19,56 +19,56 @@ from telegram.ext import (
     filters,
 )
 
-# Env
+# env
 from dotenv import load_dotenv
 load_dotenv()
 
 # === CONFIGURAZIONE BASE ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN mancante! Controlla il file .env / Variables su Railway")
+    raise RuntimeError("BOT_TOKEN mancante! Controlla il file .env o le Railway Variables.")
 
-# Dove salvare il CSV in locale (fallback se non usi DB)
 BASE_DIR = Path(__file__).resolve().parent
 CSV_PATH = os.getenv("CSV_PATH", str(BASE_DIR / "testimonianze.csv"))
 
-# Email (opzionale ma consigliato per avere tutto in casella)
-EMAIL_HOST = os.getenv("EMAIL_HOST")            # es: smtp.gmail.com
+# --- Configurazione email (Gmail, ecc.)
+EMAIL_HOST = os.getenv("EMAIL_HOST")      # es: smtp.gmail.com
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_USER = os.getenv("EMAIL_USER")            # es: tua@gmail.com
-EMAIL_PASS = os.getenv("EMAIL_PASS")            # password per app
-EMAIL_TO   = os.getenv("EMAIL_TO")              # es: tua@gmail.com
+EMAIL_USER = os.getenv("EMAIL_USER")      # la tua Gmail
+EMAIL_PASS = os.getenv("EMAIL_PASS")      # password per app
+EMAIL_TO   = os.getenv("EMAIL_TO")        # destinatario (anche uguale a EMAIL_USER)
 
-# Database (opzionale): se presente, scriviamo su Postgres invece che su CSV
-DDATABASE_URL = os.getenv("DATABASE_URL")
+# --- Database opzionale (solo se vuoi salvare su Postgres)
+DATABASE_URL = os.getenv("DATABASE_URL")
 USE_DB = bool(DATABASE_URL)
 
 if USE_DB:
-    try:
-        with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO testimonianze
-                (id, user_id, username, ateneo, anno, esito, testo, email)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                """,
-                (rid, user.id if user else None, user.username if user else None,
-                 ateneo, anno, esito, testo, email_)
-            )
-        print(f"[DB] Inserita {rid}")
-    except Exception as e:
-        print(f"[DB] Errore insert: {e}")
-        # fallback CSV
-        ensure_csv(CSV_PATH)
-        append_csv(CSV_PATH, [rid, now, user.id if user else "", user.username if user else "",
-                              ateneo, anno, esito, testo, email_])
-        print(f"[CSV fallback] Salvata {rid} su {CSV_PATH}")
+    import psycopg  # psycopg v3 (funziona su Python 3.13)
+
+    def db_conn():
+        return psycopg.connect(DATABASE_URL)
+
+    def ensure_schema():
+        with db_conn() as conn, conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS testimonianze (
+                    id UUID PRIMARY KEY,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    user_id BIGINT,
+                    username TEXT,
+                    ateneo  TEXT,
+                    anno    TEXT,
+                    esito   TEXT,
+                    testo   TEXT,
+                    email   TEXT
+                );
+            """)
 else:
-    ...
+    def ensure_schema():
+        pass
 
 
-
-# === Costanti conversazione ===
+# === Conversazione ===
 CONSENSO, ATENEO, ANNO, ESITO, TESTO, EMAIL_O_SCELTA, EMAIL = range(7)
 
 INTRO = (
@@ -81,7 +81,7 @@ SCELTA_ESITO = [["Superato"], ["Non superato"], ["Non sostenuto / ritirato"]]
 SCELTA_EMAIL = [["Lascia email"], ["Salta"]]
 
 
-# === Utility salvataggio CSV ===
+# === Utility CSV ===
 def ensure_csv(path: str):
     if not os.path.exists(path):
         with open(path, "w", newline="", encoding="utf-8") as f:
@@ -96,13 +96,10 @@ def append_csv(path: str, row: list):
 
 # === Utility email ===
 def send_email(subject: str, body: str):
-    """
-    Invia una mail se le variabili EMAIL_* sono configurate.
-    Non solleva eccezioni fatali: logga e prosegue.
-    """
     if not all([EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_TO]):
-        print("⚠️ Email non inviata: variabili EMAIL_* mancanti o incomplete.")
+        print("⚠️ Email non inviata: variabili EMAIL_* mancanti.")
         return
+
     msg = MIMEMultipart()
     msg["From"] = EMAIL_USER
     msg["To"] = EMAIL_TO
@@ -119,7 +116,7 @@ def send_email(subject: str, body: str):
         print(f"Errore invio email: {e}")
 
 
-# === Handlers conversazione ===
+# === Gestione conversazione ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(INTRO, parse_mode=ParseMode.HTML)
     await update.message.reply_text(
@@ -179,7 +176,6 @@ async def email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await salva(update, context)
 
 async def salva(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # dati utente
     rid = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     user = update.effective_user
@@ -190,25 +186,20 @@ async def salva(update: Update, context: ContextTypes.DEFAULT_TYPE):
     testo  = context.user_data.get("testo", "")
     email_ = context.user_data.get("email", "")
 
-    # --- salvataggio su DB o CSV
+    # --- salva su DB o CSV
     if USE_DB:
         ensure_schema()
         try:
-            import psycopg
             with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     INSERT INTO testimonianze
                     (id, user_id, username, ateneo, anno, esito, testo, email)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                    """,
-                    (rid, user.id if user else None, user.username if user else None,
-                     ateneo, anno, esito, testo, email_)
-                )
+                """, (rid, user.id if user else None, user.username if user else None,
+                      ateneo, anno, esito, testo, email_))
             print(f"[DB] Inserita {rid}")
         except Exception as e:
             print(f"[DB] Errore insert: {e}")
-            # fallback anche su CSV in caso di problemi DB
             ensure_csv(CSV_PATH)
             append_csv(CSV_PATH, [rid, now, user.id if user else "", user.username if user else "",
                                   ateneo, anno, esito, testo, email_])
@@ -219,9 +210,9 @@ async def salva(update: Update, context: ContextTypes.DEFAULT_TYPE):
                               ateneo, anno, esito, testo, email_])
         print(f"[CSV] Salvata {rid} su {CSV_PATH}")
 
-    # --- invio email (se configurato)
-    email_body = (
-        "Nuova testimonianza ricevuta:\n\n"
+    # --- invia email
+    body = (
+        f"Nuova testimonianza ricevuta:\n\n"
         f"ID: {rid}\n"
         f"Data (UTC): {now}\n"
         f"Utente: {user.id if user else ''} @{user.username if user else ''}\n"
@@ -231,7 +222,7 @@ async def salva(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Email lasciata: {email_ or '—'}\n\n"
         f"Testo:\n{testo}\n"
     )
-    send_email("📩 Nuova testimonianza – Semestre filtro", email_body)
+    send_email("📩 Nuova testimonianza – Semestre filtro", body)
 
     await update.message.reply_text(f"Grazie! Testimonianza salvata (ID: {rid})")
     context.user_data.clear()
@@ -243,9 +234,7 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    # crea schema se usi DB
     ensure_schema()
-
     app = Application.builder().token(BOT_TOKEN).build()
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
