@@ -39,8 +39,9 @@ EMAIL_PASS = os.getenv("EMAIL_PASS")      # password per app
 EMAIL_TO   = os.getenv("EMAIL_TO")        # destinatario (anche uguale a EMAIL_USER)
 
 # --- Database opzionale (solo se vuoi salvare su Postgres)
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()   # <— strip!
 USE_DB = bool(DATABASE_URL)
+
 
 if USE_DB:
     import psycopg  # psycopg v3 (funziona su Python 3.13)
@@ -49,7 +50,10 @@ if USE_DB:
         return psycopg.connect(DATABASE_URL)
 
     def ensure_schema():
-        with db_conn() as conn, conn.cursor() as cur:
+    if not USE_DB:
+        return
+    try:
+        with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS testimonianze (
                     id UUID PRIMARY KEY,
@@ -63,6 +67,9 @@ if USE_DB:
                     email   TEXT
                 );
             """)
+    except Exception as e:
+        print(f"[DB] ensure_schema fallita: {e}")
+
 else:
     def ensure_schema():
         pass
