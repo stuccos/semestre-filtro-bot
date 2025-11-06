@@ -26,7 +26,7 @@ load_dotenv()
 # === CONFIGURAZIONE BASE ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN mancante! Controlla il file .env o le Railway Variables.")
+    raise RuntimeError("BOT_TOKEN mancante! Controlla le Railway Variables o .env")
 
 BASE_DIR = Path(__file__).resolve().parent
 CSV_PATH = os.getenv("CSV_PATH", str(BASE_DIR / "testimonianze.csv"))
@@ -36,40 +36,38 @@ EMAIL_HOST = os.getenv("EMAIL_HOST")      # es: smtp.gmail.com
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_USER = os.getenv("EMAIL_USER")      # la tua Gmail
 EMAIL_PASS = os.getenv("EMAIL_PASS")      # password per app
-EMAIL_TO   = os.getenv("EMAIL_TO")        # destinatario (anche uguale a EMAIL_USER)
+EMAIL_TO   = os.getenv("EMAIL_TO")        # destinatario (può essere uguale a EMAIL_USER)
 
 # --- Database opzionale (solo se vuoi salvare su Postgres)
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()   # <— strip!
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 USE_DB = bool(DATABASE_URL)
 
-
 if USE_DB:
-    import psycopg  # psycopg v3 (funziona su Python 3.13)
+    import psycopg  # psycopg v3 (supportato da Python 3.13)
 
     def db_conn():
         return psycopg.connect(DATABASE_URL)
 
     def ensure_schema():
-    if not USE_DB:
-        return
-    try:
-        with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS testimonianze (
-                    id UUID PRIMARY KEY,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    user_id BIGINT,
-                    username TEXT,
-                    ateneo  TEXT,
-                    anno    TEXT,
-                    esito   TEXT,
-                    testo   TEXT,
-                    email   TEXT
-                );
-            """)
-    except Exception as e:
-        print(f"[DB] ensure_schema fallita: {e}")
-
+        if not USE_DB:
+            return
+        try:
+            with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS testimonianze (
+                        id UUID PRIMARY KEY,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        user_id BIGINT,
+                        username TEXT,
+                        ateneo  TEXT,
+                        anno    TEXT,
+                        esito   TEXT,
+                        testo   TEXT,
+                        email   TEXT
+                    );
+                """)
+        except Exception as e:
+            print(f"[DB] ensure_schema fallita: {e}")
 else:
     def ensure_schema():
         pass
