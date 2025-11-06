@@ -40,39 +40,32 @@ EMAIL_PASS = os.getenv("EMAIL_PASS")            # password per app
 EMAIL_TO   = os.getenv("EMAIL_TO")              # es: tua@gmail.com
 
 # Database (opzionale): se presente, scriviamo su Postgres invece che su CSV
-DATABASE_URL = os.getenv("DATABASE_URL")
+DDATABASE_URL = os.getenv("DATABASE_URL")
 USE_DB = bool(DATABASE_URL)
 
-# === (Opzionale) Postgres helper con psycopg2-binary ===
-# Se non metti DATABASE_URL, puoi ignorare psycopg2: non verrà usato.
 if USE_DB:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-
-    def db_conn():
-        return psycopg2.connect(DATABASE_URL)
-
-    def ensure_schema():
-        with db_conn() as conn, conn.cursor() as cur:
+    try:
+        with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS testimonianze (
-                    id UUID PRIMARY KEY,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    user_id BIGINT,
-                    username TEXT,
-                    ateneo  TEXT,
-                    anno    TEXT,
-                    esito   TEXT,
-                    testo   TEXT,
-                    email   TEXT
-                );
-                """
+                INSERT INTO testimonianze
+                (id, user_id, username, ateneo, anno, esito, testo, email)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                """,
+                (rid, user.id if user else None, user.username if user else None,
+                 ateneo, anno, esito, testo, email_)
             )
+        print(f"[DB] Inserita {rid}")
+    except Exception as e:
+        print(f"[DB] Errore insert: {e}")
+        # fallback CSV
+        ensure_csv(CSV_PATH)
+        append_csv(CSV_PATH, [rid, now, user.id if user else "", user.username if user else "",
+                              ateneo, anno, esito, testo, email_])
+        print(f"[CSV fallback] Salvata {rid} su {CSV_PATH}")
 else:
-    def ensure_schema():
-        # nessun DB: niente da fare
-        pass
+    ...
+
 
 
 # === Costanti conversazione ===
@@ -201,8 +194,8 @@ async def salva(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if USE_DB:
         ensure_schema()
         try:
-            import psycopg2
-            with psycopg2.connect(DATABASE_URL) as conn, conn.cursor() as cur:
+            import psycopg
+            with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
                 cur.execute(
                     """
                     INSERT INTO testimonianze
