@@ -101,24 +101,27 @@ def append_csv(path: str, row: list):
 
 # === Utility email ===
 def send_email(subject: str, body: str):
-    if not all([EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_TO]):
-        print("⚠️ Email non inviata: variabili EMAIL_* mancanti.")
+    RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+    EMAIL_FROM = os.getenv("EMAIL_FROM")
+    EMAIL_TO = os.getenv("EMAIL_TO")
+
+    if not (RESEND_API_KEY and EMAIL_FROM and EMAIL_TO):
+        print("⚠️ Variabili Resend mancanti, email non inviata.")
         return
 
-    msg = MIMEMultipart()
-    msg["From"] = EMAIL_USER
-    msg["To"] = EMAIL_TO
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
-
     try:
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
-            server.starttls()
-            server.login(EMAIL_USER, EMAIL_PASS)
-            server.send_message(msg)
-        print(f"📧 Email inviata a {EMAIL_TO}")
+        import resend
+        resend.api_key = RESEND_API_KEY
+        resend.Emails.send({
+            "from": EMAIL_FROM,                       # es. 'Segnalazioni <onboarding@resend.dev>'
+            "to": [EMAIL_TO],                         # es. 'segnalazionisemestrefiltro@gmail.com'
+            "subject": subject,
+            "text": body,
+        })
+        print(f"📧 Email inviata via Resend a {EMAIL_TO}")
     except Exception as e:
-        print(f"Errore invio email: {e}")
+        print(f"[EMAIL] Errore Resend: {e}")
+
 
 
 # === Gestione conversazione ===
