@@ -239,7 +239,6 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    ensure_schema()
     app = Application.builder().token(BOT_TOKEN).build()
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
@@ -255,8 +254,23 @@ def main():
         fallbacks=[CommandHandler("stop", stop)],
     )
     app.add_handler(conv)
-    print(f"Bot in ascolto… (DB={'ON' if USE_DB else 'OFF'}) CSV_PATH={CSV_PATH}")
+
+    # 👇 AGGIUNGI QUESTO BLOCCO QUI:
+    app.add_handler(CommandHandler("ping", lambda u, c: u.message.reply_text("pong")))
+
+    async def status(update, context):
+        from os import getenv
+        mode_db = "ON" if bool(getenv("DATABASE_URL", "").strip()) else "OFF"
+        await update.message.reply_text(
+            f"✅ Bot vivo\nDB: {mode_db}\nEmail: {'Resend' if getenv('RESEND_API_KEY') else 'SMTP/Off'}"
+        )
+
+    app.add_handler(CommandHandler("status", status))
+    # 👆 FINE DEL BLOCCO NUOVO
+
+    print("Bot in ascolto…")
     app.run_polling()
+
 
 
 if __name__ == "__main__":
